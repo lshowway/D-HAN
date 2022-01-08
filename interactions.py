@@ -43,35 +43,37 @@ class Interactions(object):
             num_user = len(user_map)
             num_item = len(item_map)
 
-        # userId、newsId、timestamps list
+        # userId, newsId, timestamps list
         user_ids = list()
         item_ids = list()
         timestamps = list()
         with open(file_path, 'r') as fin:
             if 'caixin' in file_path:
-                print("Interactions %s 处理时间用的 caixin 标准。"%state)
+                print("Interactions %s processing time of caixin"%state)
                 for line in fin:
-                    u, i, t = line.strip().split('\t') # 用户 新闻 时间
+                    u, i, t = line.strip().split('\t') # user news and time
                     user_ids.append(u)
                     item_ids.append(i)
-                    timestamps.append(int(t)) # str-->timestamp(10位，int32就够)
-            elif 'addressa' in file_path:
-                print("Interactions %s 处理时间用的 addressa 标准。"%state)
+                    timestamps.append(int(t))
+            elif 'adressa' in file_path:
+                print("Interactions %s processing time of adressa"%state)
                 for line in fin:
                     u, i, t = line.strip().split('\t')
                     user_ids.append(u)
                     item_ids.append(i)
-                    timestamps.append(int(t)) # str-->timestamp(10位，int32就够)
+                    timestamps.append(int(t)) # str-->timestamp
+            elif 'cert' in file_path:
+                print("Interactions %s processing time of cert"%state)
+                for line in fin:
+                    u, i, t = line.strip().split('\t')
+                    user_ids.append(u)
+                    item_ids.append(i)
+                    timestamps.append(int(time.mktime(time.strptime(t.strip(), "%Y-%m-%d %H:%M:%S"))))
             else:
-                print("Interactions %s 处理时间用的 cert 标准。"%state)
-                for line in fin:
-                    u, i, t = line.strip().split('\t')
-                    user_ids.append(u)
-                    item_ids.append(i)
-                    timestamps.append(int(time.mktime(time.strptime(t.strip(), "%Y-%m-%d %H:%M:%S"))))  # str-->timestamp(10位，int32就够)
+                pass
 
-        # user_map[userId - user编号(从0开始)] str - int
-        # item_map[newsId - news编号(从0开始)] str - int
+        # user_map[userId - user id (start from zero)] str - int
+        # item_map[newsId - news id (start from zero)] str - int
         for u in user_ids:
             if u not in user_map:
                 user_map[u] = num_user
@@ -82,7 +84,7 @@ class Interactions(object):
                 num_item += 1
 
 
-        # user编号、news编号 list(都从0开始)
+        # user id、news id list(all starts from zero)
         user_ids = np.array([user_map[u] for u in user_ids],dtype = np.int64)
         item_ids = np.array([item_map[i] for i in item_ids],dtype = np.int64)
         timestamps = np.array(timestamps)
@@ -124,43 +126,33 @@ class Interactions(object):
         item_ids = self.item_ids[sort_indices]
         timestamps = self.timestamps[sort_indices]
 
-        user_ids, indices, counts = np.unique(user_ids,
-                                              return_index=True,
-                                              return_counts=True)
+        user_ids, indices, counts = np.unique(user_ids, return_index=True, return_counts=True)
 
         num_subsequences = sum([c - max_sequence_length + 1 if c >= max_sequence_length else 1 for c in counts])#一共有多少子序列。1573163 = 1573760-199 * (4-1)
 
-        sequences = np.zeros((num_subsequences, sequence_length),
-                             dtype=np.int64)
-        sequences_time = np.zeros((num_subsequences, sequence_length),
-                                  dtype=np.int64)
-        sequences_targets = np.zeros(num_subsequences,
-                                     dtype=np.int64)
-        sequences_targets_time = np.zeros(num_subsequences,
-                                     dtype=np.int64)
-        sequence_users = np.empty(num_subsequences,
-                                  dtype=np.int64)
+        sequences = np.zeros((num_subsequences, sequence_length), dtype=np.int64)
+        sequences_time = np.zeros((num_subsequences, sequence_length), dtype=np.int64)
+        sequences_targets = np.zeros(num_subsequences, dtype=np.int64)
+        sequences_targets_time = np.zeros(num_subsequences, dtype=np.int64)
+        sequence_users = np.empty(num_subsequences, dtype=np.int64)
 
-        test_sequences = np.zeros((self.num_users, sequence_length),
-                                  dtype=np.int64)
-        test_sequences_time = np.zeros((self.num_users, sequence_length),
-                                  dtype=np.int64)
-        test_users = np.empty(self.num_users,
-                              dtype=np.int64)
+        test_sequences = np.zeros((self.num_users, sequence_length), dtype=np.int64)
+        test_sequences_time = np.zeros((self.num_users, sequence_length), dtype=np.int64)
+        test_users = np.empty(self.num_users, dtype=np.int64)
 
         _uid = None
-        for i, (uid,item_seq,time_seq) in enumerate(_generate_sequences(user_ids,# uid,item_seq表示uid与他的一个序列
+        for i, (uid,item_seq,time_seq) in enumerate(_generate_sequences(user_ids,# uid,item_seq: uid and its sequence
                                                            item_ids,timestamps,
                                                            indices,
                                                            max_sequence_length)):
-            if uid != _uid:# 到了一个新的用户，该用户最后交互的L个item是test数据（item_seq先返回后读的）
+            if uid != _uid:# a new user, the last L items are used as test data
                 test_sequences[uid][:] = item_seq[-sequence_length:]
                 test_sequences_time[uid][:] = time_seq[-sequence_length:]
                 test_users[uid] = uid
                 _uid = uid
-            sequences_targets[i] = item_seq[-target_length]         # 后1个item
+            sequences_targets[i] = item_seq[-target_length]         # next item
             sequences_targets_time[i] = time_seq[-target_length]
-            sequences[i][:] = item_seq[:sequence_length]            # 前L个item
+            sequences[i][:] = item_seq[:sequence_length]            # top L item
             sequences_time[i][:] = time_seq[:sequence_length]
             sequence_users[i] = uid
         self.sequences = SequenceInteractions(sequence_users, sequences, sequences_time, sequences_targets, sequences_targets_time)
@@ -182,12 +174,7 @@ class SequenceInteractions(object):
         sequence targets
     """
 
-    def __init__(self,
-                 user_ids,
-                 sequences,
-                 sequences_time,
-                 targets=None,
-                 targets_time=None):
+    def __init__(self, user_ids, sequences, sequences_time, targets=None, targets_time=None):
         self.user_ids = user_ids
         self.sequences = sequences
         self.sequences_time = sequences_time

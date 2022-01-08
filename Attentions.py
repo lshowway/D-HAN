@@ -1,4 +1,4 @@
-from transformers.modeling_bert import  ACT2FN
+from transformers.models.bert.modeling_bert import  ACT2FN
 import torch
 from torch import nn
 import math
@@ -333,121 +333,66 @@ class TransformerLayerWithMultiHead(nn.Module):
         return attn_vec_4 # batch, L, d
 
 
-class TimeEmbeddingYear(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.args = config
-        t = config.hidden_size // 6
-        self.y_embedding = nn.Embedding(9, t)
-        self.m_embedding = nn.Embedding(12, t)
-        self.d_embedding = nn.Embedding(31, t)
-        self.w_embedding = nn.Embedding(7, t)
-        self.h_embedding = nn.Embedding(24, t)
-        self.mi_embedding = nn.Embedding(60, config.hidden_size - t * 5)
-
-        self.y_interval_embedding = nn.Embedding(9 * 2, t)
-        self.m_interval_embedding = nn.Embedding(12 * 2, t)
-        self.d_interval_embedding = nn.Embedding(31 * 2, t)
-        self.w_interval_embedding = nn.Embedding(7 * 2, t) # -7, 6
-        self.h_interval_embedding = nn.Embedding(24 * 2, t) # -24, 24
-        self.mi_interval_embedding = nn.Embedding(60 * 2, config.hidden_size - t * 5) # -60, 60
-
-    def convert_timestamp(self, history_time, candidate_time):
-        import time
-        batch_time = torch.cat([history_time, candidate_time.unsqueeze(1)], dim=1).tolist()
-
-        year = [2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020]
-        year = dict(zip(year, range(len(year))))
-
-        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        months = dict(zip(months, range(12)))
-
-        days = dict(zip(range(1, 31+1), range(31)))
-
-        weeks = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        weeks = dict(zip(weeks, range(7)))
-
-        hours = dict(zip(range(24), range(24)))
-        miniutes = dict(zip(range(60), range(60)))
-
-        def convert(timestamp):
-            t = time.ctime(timestamp)
-            # print(t)
-            w, m, d,hm, y = t.split()
-            h, mi = hm.split(':')[0:2]
-            return [y, m, d, w, h, mi]
-        batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi = [], [], [], [], [], []
-        for time_list in batch_time:
-            t = [convert(x) for x in time_list]
-            y_list, m_list, d_list, w_list, h_list, mi_list = [], [], [], [], [], []
-            for x in t:
-                y, m, d, w, h, mi = x
-                y, d, h, mi = int(y), int(d), int(h), int(mi)
-                y, m, d, w, h, mi = year[y], months[m], days[d], weeks[w], hours[h], miniutes[mi]
-                y_list.append(y)
-                m_list.append(m)
-                d_list.append(d)
-                w_list.append(w)
-                h_list.append(h)
-                mi_list.append(mi)
-            batch_y.append(y_list)
-            batch_m.append(m_list)
-            batch_d.append(d_list)
-            batch_w.append(w_list)
-            batch_h.append(h_list)
-            batch_mi.append(mi_list)
-        return batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi # batch, L
-
-    def date_to_tensor(self, history_time, candidate_time):
-        batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi = self.convert_timestamp(history_time, candidate_time)
-        batch_y = torch.tensor(batch_y).to(device)
-        batch_m = torch.tensor(batch_m).to(device)
-        batch_d = torch.tensor(batch_d).to(device)
-        batch_w = torch.tensor(batch_w).to(device)
-        batch_h = torch.tensor(batch_h).to(device)
-        batch_mi = torch.tensor(batch_mi).to(device)
-
-        return batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi
-
-    def get_absolute_embedding(self, batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi):
-        y_embed = self.m_embedding(batch_y)
-        m_embed = self.m_embedding(batch_m)
-        d_embed = self.d_embedding(batch_d)
-        w_embed = self.w_embedding(batch_w)
-        h_embed = self.h_embedding(batch_h)
-        mi_embed = self.mi_embedding(batch_mi)
-
-        abs_embedding = torch.cat([y_embed, m_embed, d_embed, w_embed, h_embed, mi_embed], dim=2)
-        return abs_embedding
-
-    def get_interval_embedding(self, batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi):
-        y_interval = batch_y[:, -1].unsqueeze(1) - batch_y[:, :-1] + 9
-        m_interval = batch_m[:, -1].unsqueeze(1) - batch_m[:, :-1] + 12
-        d_interval = batch_d[:, -1].unsqueeze(1) - batch_d[:, :-1] + 31
-        w_interval = batch_w[:, -1].unsqueeze(1) - batch_w[:, :-1] + 7
-        h_interval = batch_h[:, -1].unsqueeze(1) - batch_h[:, :-1] + 24
-        mi_interval = batch_mi[:, -1].unsqueeze(1) - batch_mi[:, :-1] + 60
-
-        y_interval_embed = self.y_interval_embedding(y_interval)
-        m_interval_embed = self.m_interval_embedding(m_interval)
-        d_interval_embed = self.d_interval_embedding(d_interval)
-        w_interval_embed = self.w_interval_embedding(w_interval)
-        h_interval_embed = self.h_interval_embedding(h_interval)
-        mi_interval_embed = self.mi_interval_embedding(mi_interval)
-
-        interval_embedding = torch.cat([y_interval_embed, m_interval_embed, d_interval_embed, w_interval_embed, h_interval_embed, mi_interval_embed], dim=2)
-
-        return interval_embedding
-
-    def forward(self, history_time, candidate_time):
-        batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi = self.date_to_tensor(history_time, candidate_time)
-        abs_embedding = self.get_absolute_embedding(batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi)
-        interval_embedding = self.get_interval_embedding(batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi)
-
-        return abs_embedding, interval_embedding
+# class TimeInterval(nn.Module):
+#     def __init__(self, config):
+#         super().__init__()
+#         self.args = config
+#         self.bins = 100
+#         self.interval_embedding = nn.Embedding(self.bins, config.hidden_size)
+#
+#     def get_time_interval(self, history_time, candidate_time):
+#         # history_time:batch,L   candidate_tie:batch,
+#
+#         # 1. 两两时间差，N*N
+#         # batch = history_time.shape[0]
+#         # interval = torch.zeros((batch, self.args.L, self.args.L)) # batch, L, L
+#         # for j in range(self.args.L):
+#         #     interval[:, j] = history_time - history_time[:, j].unsqueeze(1)
+#
+#         # 2. 相连时间差，N
+#         # time = torch.cat([history_time, candidate_time.unsqueeze(1)], dim=1)  # batch, L+1
+#         # t1 = time[:, :-1]
+#         # t2 = time[:, 1:]
+#         # interval = (t2 - t1).type(torch.FloatTensor)  # batch, L
+#
+#         # 3. 最后一个和所有时间差，N
+#         interval = (candidate_time.unsqueeze(1).repeat(1, history_time.size(1)) - history_time).type(torch.FloatTensor) # batch, L, 1
+#
+#         interval = interval.to(device) / 60  # 越往后，离得越近
+#
+#         return interval
+#
+#     def discretize(self, input):
+#         from sklearn.preprocessing import KBinsDiscretizer
+#         interval = input.tolist()
+#         est = KBinsDiscretizer(n_bins=self.bins, encode='ordinal', strategy='uniform')
+#         est.fit(interval)
+#         Xt = est.transform(interval)
+#         interval = torch.tensor(Xt).type(torch.LongTensor).to(device)
+#         interval_embedding = self.interval_embedding(interval)
+#
+#         return  interval_embedding
+#
+#     def use_time_interval(self, interval):
+#         # 1. 函数拟合
+#         # interval = torch.exp((-self.args.time_factor * (interval)))  # 后面是1.0，前面是0.9
+#
+#         # 2. 离散化后使用embedding
+#         # 3. 线性变换
+#         # interval = self.fc(interval) # batch, L
+#         # interval = self.softmax(interval)
+#
+#         return interval
+#
+#     def forward(self, history_time, candidate_time):
+#         interval = self.get_time_interval(history_time, candidate_time)
+#         interval = self.discretize(interval)
+#         # interval = self.use_time_interval(interval)
+#
+#         return  interval
 
 
-class TimeEmbeddingMonth(nn.Module):
+class TimeEmbedding(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.args = config
@@ -463,110 +408,6 @@ class TimeEmbeddingMonth(nn.Module):
         self.w_interval_embedding = nn.Embedding(7 * 2, t) # -7, 6
         self.h_interval_embedding = nn.Embedding(24 * 2, t) # -24, 24
         self.mi_interval_embedding = nn.Embedding(60 * 2, config.hidden_size - t * 4) # -60, 60
-
-    def convert_timestamp(self, history_time, candidate_time):
-        import time
-        batch_time = torch.cat([history_time, candidate_time.unsqueeze(1)], dim=1).tolist()
-
-        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        months = dict(zip(months, range(12)))
-
-        days = dict(zip(range(1, 31+1), range(31)))
-
-        weeks = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        weeks = dict(zip(weeks, range(7)))
-
-        hours = dict(zip(range(24), range(24)))
-        miniutes = dict(zip(range(60), range(60)))
-
-        def convert(timestamp):
-            t = time.ctime(timestamp)
-            # print(t)
-            w, m, d,hm, y = t.split()
-            h, mi = hm.split(':')[0:2]
-            return [y, m, d, w, h, mi]
-        batch_y, batch_m, batch_d, batch_w, batch_h, batch_mi = [], [], [], [], [], []
-        for time_list in batch_time:
-            t = [convert(x) for x in time_list]
-            y_list, m_list, d_list, w_list, h_list, mi_list = [], [], [], [], [], []
-            for x in t:
-                y, m, d, w, h, mi = x
-                y, d, h, mi = int(y), int(d), int(h), int(mi)
-                m, d, w, h, mi = months[m], days[d], weeks[w], hours[h], miniutes[mi]
-                m_list.append(m)
-                d_list.append(d)
-                w_list.append(w)
-                h_list.append(h)
-                mi_list.append(mi)
-            batch_m.append(m_list)
-            batch_d.append(d_list)
-            batch_w.append(w_list)
-            batch_h.append(h_list)
-            batch_mi.append(mi_list)
-        return batch_m, batch_d, batch_w, batch_h, batch_mi # batch, L
-
-    def date_to_tensor(self, history_time, candidate_time):
-        batch_m, batch_d, batch_w, batch_h, batch_mi = self.convert_timestamp(history_time, candidate_time)
-        batch_m = torch.tensor(batch_m).to(device)
-        batch_d = torch.tensor(batch_d).to(device)
-        batch_w = torch.tensor(batch_w).to(device)
-        batch_h = torch.tensor(batch_h).to(device)
-        batch_mi = torch.tensor(batch_mi).to(device)
-
-        return batch_m, batch_d, batch_w, batch_h, batch_mi
-
-    def get_absolute_embedding(self, batch_m, batch_d, batch_w, batch_h, batch_mi):
-        m_embed = self.m_embedding(batch_m)
-        d_embed = self.d_embedding(batch_d)
-        w_embed = self.w_embedding(batch_w)
-        h_embed = self.h_embedding(batch_h)
-        mi_embed = self.mi_embedding(batch_mi)
-
-        abs_embedding = torch.cat([m_embed, d_embed, w_embed, h_embed, mi_embed], dim=2)
-
-        return abs_embedding
-
-    def get_interval_embedding(self, batch_m, batch_d, batch_w, batch_h, batch_mi):
-        m_interval = batch_m[:, -1].unsqueeze(1) - batch_m[:, :-1] + 12
-        d_interval = batch_d[:, -1].unsqueeze(1) - batch_d[:, :-1] + 31
-        w_interval = batch_w[:, -1].unsqueeze(1) - batch_w[:, :-1] + 7
-        h_interval = batch_h[:, -1].unsqueeze(1) - batch_h[:, :-1] + 24
-        mi_interval = batch_mi[:, -1].unsqueeze(1) - batch_mi[:, :-1] + 60
-
-        m_interval_embed = self.m_interval_embedding(m_interval)
-        d_interval_embed = self.d_interval_embedding(d_interval)
-        w_interval_embed = self.w_interval_embedding(w_interval)
-        h_interval_embed = self.h_interval_embedding(h_interval)
-        mi_interval_embed = self.mi_interval_embedding(mi_interval)
-
-        interval_embedding = torch.cat([m_interval_embed, d_interval_embed, w_interval_embed, h_interval_embed, mi_interval_embed], dim=2)
-
-        return interval_embedding
-
-    def forward(self, history_time, candidate_time):
-        batch_m, batch_d, batch_w, batch_h, batch_mi = self.date_to_tensor(history_time, candidate_time)
-        abs_embedding = self.get_absolute_embedding(batch_m, batch_d, batch_w, batch_h, batch_mi)
-        interval_embedding = self.get_interval_embedding(batch_m, batch_d, batch_w, batch_h, batch_mi)
-
-        return abs_embedding, interval_embedding
-
-
-class TimeEmbeddingAdd(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.args = config
-        t = config.hidden_size
-        self.m_embedding = nn.Embedding(12, t)
-        self.d_embedding = nn.Embedding(31, t)
-        self.w_embedding = nn.Embedding(7, t)
-        self.h_embedding = nn.Embedding(24, t)
-        self.mi_embedding = nn.Embedding(60, t)
-
-        self.m_interval_embedding = nn.Embedding(12 * 2, t)
-        self.d_interval_embedding = nn.Embedding(31 * 2, t)
-        self.w_interval_embedding = nn.Embedding(7 * 2, t) # -7, 6
-        self.h_interval_embedding = nn.Embedding(24 * 2, t) # -24, 24
-        self.mi_interval_embedding = nn.Embedding(60 * 2, t) # -60, 60
 
     def convert_timestamp(self, history_time, candidate_time):
         import time
@@ -623,15 +464,14 @@ class TimeEmbeddingAdd(nn.Module):
         d_embed = self.d_embedding(batch_d)
         w_embed = self.w_embedding(batch_w)
         h_embed = self.h_embedding(batch_h)
-        mi_embed = self.mi_embedding(batch_mi) # batch, L, d
+        mi_embed = self.mi_embedding(batch_mi)
 
-        abs_embedding = torch.stack([m_embed, d_embed, w_embed, h_embed, mi_embed], dim=2)
-        abs_embedding = torch.mean(abs_embedding, dim=2)
+        abs_embedding = torch.cat([m_embed, d_embed, w_embed, h_embed, mi_embed], dim=2)
 
         return abs_embedding
 
     def get_interval_embedding(self, batch_m, batch_d, batch_w, batch_h, batch_mi):
-        m_interval = batch_m[:, -1].unsqueeze(1) - batch_m[:, :-1] + 12 # candidate - history
+        m_interval = batch_m[:, -1].unsqueeze(1) - batch_m[:, :-1] + 12
         d_interval = batch_d[:, -1].unsqueeze(1) - batch_d[:, :-1] + 31
         w_interval = batch_w[:, -1].unsqueeze(1) - batch_w[:, :-1] + 7
         h_interval = batch_h[:, -1].unsqueeze(1) - batch_h[:, :-1] + 24
@@ -643,8 +483,7 @@ class TimeEmbeddingAdd(nn.Module):
         h_interval_embed = self.h_interval_embedding(h_interval)
         mi_interval_embed = self.mi_interval_embedding(mi_interval)
 
-        interval_embedding = torch.stack([m_interval_embed, d_interval_embed, w_interval_embed, h_interval_embed, mi_interval_embed], dim=2)
-        interval_embedding = torch.mean(interval_embedding, dim=2)
+        interval_embedding = torch.cat([m_interval_embed, d_interval_embed, w_interval_embed, h_interval_embed, mi_interval_embed], dim=2)
 
         return interval_embedding
 
