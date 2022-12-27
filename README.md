@@ -1,5 +1,7 @@
 # D-HAN
 The source code of D-HAN
+### ================= UPDATE ===============
+> The dir `caixin_NS_code_4` is just used for running the code on the two datasets well, the code may be not the lasted version reported on the paper.
 
 #### This is the source code of D-HAN: Dynamic News Recommendation with Hierarchical Attention Network. However, only the code of three tested datasets is uploaded.
 
