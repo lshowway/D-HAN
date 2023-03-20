@@ -17,7 +17,8 @@ The source code of D-HAN
  
 
 > We remove redundant files, only the training files of public dataset Adressa is kept. To run the training process, do the following steps:
-> 1. Downloading Adressa dataset from [BUAA drive](https://bhpan.buaa.edu.cn:443/link/1563FAD62A6EA7958A78D98B9083D6F3) or [Google drive](https://drive.google.com/file/d/1ipW1CClXmwUYIvkcZJp3JUvWbRq_7-oz/view?usp=sharing), note that, the dataset is processed from the full dataset of public Adressa dataset, if you need the original processing file, please contact me.
+> 1. Downloading Adressa dataset from [BUAA drive](https://bhpan.buaa.edu.cn:443/link/EA16980123791A175E3B56F92D93438B
+Valid Until: 2023-04-19 00:59) or [Google drive](https://drive.google.com/file/d/1AnfcrhoaaZqfGaNzU49OTzV47054C4I2/view?usp=sharing), note that, the dataset is processed from the full dataset of public Adressa dataset, if you need the original processing file, please contact me.
 > 2. Run this command `python run_adressa.py`, parameters can be set according to the paper or kept default. Note that the number of negative samples used in the training phase is 3, but when dynamic negative sampling method is adopted, 50 news items are first randomly selected and then DNS sample 3 items from the 50 items.
 
 
